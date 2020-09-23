@@ -1,0 +1,9 @@
+{
+  "require": {
+    "spatie/async": "^1.5",
+    "react/event-loop": "^1.1",
+    "react/http": "^1.1",
+    "monolog/monolog": "^2.1",
+    "cboden/ratchet": "^0.4.3"
+  }
+}
