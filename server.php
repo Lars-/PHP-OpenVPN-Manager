@@ -3,6 +3,7 @@
 use LJPc\WebsocketServer;
 
 require __DIR__ . '/vendor/autoload.php';
+require __DIR__ . '/ConnectionModel.php';
 require __DIR__ . '/WebsocketServer.php';
 
 $loop = React\EventLoop\Factory::create();

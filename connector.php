@@ -29,18 +29,7 @@ $credentials = $args->getOpt( 'credentials', __DIR__ . '/credentials/empty.txt' 
 
 $loop      = Factory::create();
 $connector = new Connector( $loop );
-$connector->connect( "$host:$port" )->then( static function ( ConnectionInterface $connection ) use ( $id, $file, $credentials ) {
-	$connection->write( 'test' );
-
-	sleep( 1 );
-	$vpnConnection = new Connection( (string) $id, (string) $file, (string) $credentials, $connection );
-	$vpnConnection->start();
-	$vpnConnection->waitUntilConnected( 5 );
-	if ( ! $vpnConnection->isConnected() ) {
-		$vpnConnection->setStatus( 'closed' );
-		$connection->close();
-	}
-
+$connector->connect( "$host:$port" )->then( static function ( ConnectionInterface $connection ) use ( $id, $file, $credentials, $loop ) {
 	$connection->on( 'data', static function ( $data ) use ( $connection, $id ) {
 		try {
 			$data = json_decode( $data, true, 512, JSON_THROW_ON_ERROR );
@@ -50,14 +39,26 @@ $connector->connect( "$host:$port" )->then( static function ( ConnectionInterfac
 		if ( ! isset( $data['id'] ) ) {
 			return;
 		}
-		if ( $data['id'] !== $id ) {
+		if ( $data['id'] !== $id && $data['id'] !== '*' ) {
 			return;
 		}
 
-		echo $data['message'];
+		if ( $data['command'] === 'kill' ) {
+			$connection->close();
+		}
 	} );
 
+	$connection->on( 'close', function () {
+		exit;
+	} );
 
+	$vpnConnection = new Connection( (string) $id, (string) $file, (string) $credentials, $connection );
+	$vpnConnection->start();
+
+	$loop->addPeriodicTimer( 1, static function () use ( $vpnConnection, $connection ) {
+		$vpnConnection->checkConnectionAndSendStatus();
+	} );
 } );
+
 
 $loop->run();

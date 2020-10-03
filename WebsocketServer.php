@@ -2,46 +2,56 @@
 
 namespace LJPc;
 
+use ConnectionModel;
+use Exception;
 use Ratchet\ConnectionInterface;
 use Ratchet\MessageComponentInterface;
+use SplObjectStorage;
 
 class WebsocketServer implements MessageComponentInterface {
 	protected $clients;
 
 	public function __construct() {
-		$this->clients = new \SplObjectStorage;
+		$this->clients = new SplObjectStorage;
 	}
 
 	public function onOpen( ConnectionInterface $conn ) {
-		// Store the new connection to send messages to later
-		$this->clients->attach( $conn );
-
-		$conn->send( 'Test' );
-
-		echo "New connection! ({$conn->resourceId})\n";
+		$this->clients->attach( $conn, new ConnectionModel() );
 	}
 
 	public function onMessage( ConnectionInterface $from, $msg ) {
-		$numRecv = count( $this->clients ) - 1;
-		echo sprintf( 'Connection %d sending message "%s" to %d other connection%s' . "\n"
-			, $from->resourceId, $msg, $numRecv, $numRecv == 1 ? '' : 's' );
-
-		foreach ( $this->clients as $client ) {
-			if ( $from !== $client ) {
-				// The sender is not the receiver, send to each client connected
+		try {
+			$data = json_decode( $msg, true, 512, JSON_THROW_ON_ERROR );
+		} catch ( Exception $e ) {
+			return;
+		}
+		if ( ! isset( $data['id'] ) ) {
+			return;
+		}
+		if ( $data['id'] === '*' ) {
+			foreach ( $this->clients as $client ) {
 				$client->send( $msg );
 			}
+
+			return;
+		}
+
+		/** @var ConnectionModel $connectionModel */
+		$connectionModel = $this->clients->offsetGet( $from );
+		$connectionModel->setId( $data['id'] );
+
+		echo 'Message from ' . $connectionModel->getId() . "\n";
+
+		if ( $data['command'] === 'status' ) {
+			$connectionModel->setStatus( $data['data'] );
 		}
 	}
 
 	public function onClose( ConnectionInterface $conn ) {
-		// The connection is closed, remove it, as we can no longer send it messages
 		$this->clients->detach( $conn );
-
-		echo "Connection {$conn->resourceId} has disconnected\n";
 	}
 
-	public function onError( ConnectionInterface $conn, \Exception $e ) {
+	public function onError( ConnectionInterface $conn, Exception $e ) {
 		echo "An error has occurred: {$e->getMessage()}\n";
 
 		$conn->close();

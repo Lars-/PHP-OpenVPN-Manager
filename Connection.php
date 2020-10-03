@@ -12,9 +12,9 @@ class Connection {
 	private string $id;
 	private string $tun;
 	private string $status = 'waiting';
-	private string $coupledWith;
 	private int $lastActive;
 	private ConnectionInterface $connection;
+	private int $waitBeats = 0;
 
 	public function __construct( string $id, string $configFile, string $credentialsFile, ConnectionInterface $connection ) {
 		$this->id         = $id;
@@ -28,19 +28,23 @@ class Connection {
 	public function start(): void {
 		$this->setStatus( 'connecting' );
 		$this->process = Process::fromShellCommandline( $this->execLine );
+		echo $this->execLine;
 		$this->process->start();
 	}
 
-	public function waitUntilConnected( int $maxSeconds = 15 ) {
-		$i = 0;
-		while ( $i < $maxSeconds ) {
+	public function checkConnectionAndSendStatus( int $waitBeats = 15 ) {
+		if ( $this->waitBeats < $waitBeats ) {
 			if ( $this->isConnected() ) {
-//				Helpers::log( 'Connected to ' . $this->tun );
-				break;
+				$this->waitBeats = 0;
+				$this->sendStatus();
+
+				return;
 			}
-			sleep( 1 );
-			$i ++;
+			$this->waitBeats ++;
+
+			return;
 		}
+		$this->setStatus( 'disconnected' );
 	}
 
 	public function isConnected(): bool {
@@ -53,11 +57,7 @@ class Connection {
 				return false;
 			}
 			if ( $this->status === 'connecting' ) {
-				if ( $this->coupledWith === '' ) {
-					$this->setStatus( 'idle' );
-				} else {
-					$this->setStatus( 'connected' );
-				}
+				$this->setStatus( 'idle' );
 			}
 			$this->tun = $content;
 
@@ -67,23 +67,25 @@ class Connection {
 		return false;
 	}
 
+	public function sendStatus() {
+		$data = json_encode( [
+			'id'      => $this->id,
+			'command' => 'status',
+			'data'    => $this->status,
+		], JSON_THROW_ON_ERROR );
+		echo "Sending: $data\n";
+		$this->connection->write( $data . "\n" );
+	}
+
 	public function __destruct() {
+		$this->stop();
 		if ( file_exists( __DIR__ . '/storage/' . $this->id . '.txt' ) ) {
 			unlink( __DIR__ . '/storage/' . $this->id . '.txt' );
 		}
 	}
 
 	public function stop(): void {
-//		Helpers::log( "Stopping {$this->tun}" );
 		$this->process->stop( 15, SIGTERM );
-		$i = 0;
-		while ( $i < 15 ) {
-			if ( ! $this->isConnected() ) {
-				break;
-			}
-			sleep( 1 );
-			$i ++;
-		}
 		$this->setStatus( 'disconnected' );
 	}
 
@@ -100,32 +102,11 @@ class Connection {
 	public function setStatus( string $status ): void {
 		$this->status = $status;
 		$this->updateLastActive();
-		$data = json_encode( [
-			'id'      => $this->id,
-			'command' => 'status',
-			'data'    => $status
-		], JSON_THROW_ON_ERROR );
-		var_dump( $data );
-		$this->connection->write( $data );
-
+		$this->sendStatus();
 	}
 
 	public function updateLastActive(): void {
 		$this->lastActive = time();
-	}
-
-	/**
-	 * @return string
-	 */
-	public function getCoupledWith(): string {
-		return $this->coupledWith;
-	}
-
-	/**
-	 * @param string $coupledWith
-	 */
-	public function setCoupledWith( string $coupledWith ): void {
-		$this->coupledWith = $coupledWith;
 	}
 
 	/**
