@@ -6,6 +6,7 @@
     "cboden/ratchet": "^0.4.3",
     "vanilla/garden-cli": "^2.2",
     "ext-json": "*",
-    "ext-pcntl": "*"
+    "ext-pcntl": "*",
+    "ext-curl": "*"
   }
 }

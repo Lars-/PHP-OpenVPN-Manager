@@ -30,7 +30,18 @@ $credentials = $args->getOpt( 'credentials', __DIR__ . '/credentials/empty.txt' 
 $loop      = Factory::create();
 $connector = new Connector( $loop );
 $connector->connect( "$host:$port" )->then( static function ( ConnectionInterface $connection ) use ( $id, $file, $credentials, $loop ) {
-	$connection->on( 'data', static function ( $data ) use ( $connection, $id ) {
+	$connection->on( 'close', function () {
+		exit;
+	} );
+
+	$vpnConnection = new Connection( (string) $id, (string) $file, (string) $credentials, $connection );
+	$vpnConnection->start();
+
+	$loop->addPeriodicTimer( 1, static function () use ( $vpnConnection, $connection ) {
+		$vpnConnection->checkConnectionAndSendStatus();
+	} );
+
+	$connection->on( 'data', static function ( $data ) use ( $connection, $id, $vpnConnection ) {
 		try {
 			$data = json_decode( $data, true, 512, JSON_THROW_ON_ERROR );
 		} catch ( Exception $e ) {
@@ -43,20 +54,34 @@ $connector->connect( "$host:$port" )->then( static function ( ConnectionInterfac
 			return;
 		}
 
+		if ( $data['command'] === 'request' ) {
+			$vpnConnection->setStatus( 'working' );
+			$curl = curl_init();
+			curl_setopt_array( $curl, $data['data'] );
+			curl_setopt( $curl, CURLOPT_INTERFACE, $vpnConnection->getTun() );
+			curl_setopt( $curl, CURLOPT_TIMEOUT, 120 );
+			curl_setopt( $curl, CURLOPT_COOKIESESSION, true );
+			curl_setopt( $curl, CURLOPT_COOKIEJAR, __DIR__ . "/storage/{$id}_cookies" );
+			curl_setopt( $curl, CURLOPT_COOKIEFILE, __DIR__ . "/storage/{$id}_cookies" );
+
+			$response = curl_exec( $curl );
+			$info     = curl_getinfo( $curl );
+			$err      = curl_error( $curl );
+
+			curl_close( $curl );
+			file_put_contents( __DIR__ . "/storage/{$id}_response", json_encode( [
+				'response' => $response,
+				'info'     => $info,
+				'err'      => $err,
+			], JSON_THROW_ON_ERROR ) );
+
+			$vpnConnection->setStatus( 'used' );
+		}
+
 		if ( $data['command'] === 'kill' ) {
+			$vpnConnection->stop();
 			$connection->close();
 		}
-	} );
-
-	$connection->on( 'close', function () {
-		exit;
-	} );
-
-	$vpnConnection = new Connection( (string) $id, (string) $file, (string) $credentials, $connection );
-	$vpnConnection->start();
-
-	$loop->addPeriodicTimer( 1, static function () use ( $vpnConnection, $connection ) {
-		$vpnConnection->checkConnectionAndSendStatus();
 	} );
 } );
 

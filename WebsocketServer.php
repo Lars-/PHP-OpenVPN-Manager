@@ -40,10 +40,14 @@ class WebsocketServer implements MessageComponentInterface {
 		$connectionModel = $this->clients->offsetGet( $from );
 		$connectionModel->setId( $data['id'] );
 
-		echo 'Message from ' . $connectionModel->getId() . "\n";
+//		echo 'Message from ' . $connectionModel->getId() . "\n";
 
 		if ( $data['command'] === 'status' ) {
 			$connectionModel->setStatus( $data['data'] );
+		}
+
+		if ( $data['command'] === 'response' ) {
+			echo $data['data'];
 		}
 	}
 

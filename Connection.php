@@ -79,12 +79,18 @@ class Connection {
 
 	public function __destruct() {
 		$this->stop();
-		if ( file_exists( __DIR__ . '/storage/' . $this->id . '.txt' ) ) {
-			unlink( __DIR__ . '/storage/' . $this->id . '.txt' );
-		}
 	}
 
 	public function stop(): void {
+		if ( file_exists( __DIR__ . '/storage/' . $this->id . '.txt' ) ) {
+			unlink( __DIR__ . '/storage/' . $this->id . '.txt' );
+		}
+		if ( file_exists( __DIR__ . '/storage/' . $this->id . '_cookies' ) ) {
+			unlink( __DIR__ . '/storage/' . $this->id . '_cookies' );
+		}
+		if ( file_exists( __DIR__ . '/storage/' . $this->id . '_response' ) ) {
+			unlink( __DIR__ . '/storage/' . $this->id . '_response' );
+		}
 		$this->process->stop( 15, SIGTERM );
 		$this->setStatus( 'disconnected' );
 	}
